@@ -7,9 +7,8 @@ import json
 import re
 from time import time
 # from termcolor import colored
-
-__author__  = 'travel.liu'
-__version__ = '1.2'
+from .__init__ import __version__
+from .__init__ import __author__
 
 def args(*args, **kwargs):
   def _decorator(func):
@@ -636,9 +635,12 @@ class Main(OraStats):
     except Exception, err:
       print str(err)
 
-if __name__ == "__main__":
+def run():
   main = Main()
   main()
+
+if __name__ == "__main__":
+  run()
 
 
 
