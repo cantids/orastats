@@ -48,7 +48,9 @@ Class Main 里的 __init__
 
 #初始化数据库
 ./orastats.py init
+
 InIt database Successfully
+
 ```
 # 添加数据库
 ```python
@@ -151,7 +153,7 @@ Oracle Database 11g Enterprise Edition Release 11.2.0.3.0 - 64bit Production
 找到 class OraStats(object)
 
 增加一个类似如下的,(注意缩进)
-  def version(self):
+  def lock(self):
 
     """Print Database Lock"""
     sql = """

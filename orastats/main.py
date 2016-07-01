@@ -4,8 +4,11 @@ import argparse
 import cx_Oracle
 import inspect
 import json
+import six
 import re
+
 from time import time
+
 # from termcolor import colored
 from .__init__ import __version__
 from .__init__ import __author__
@@ -14,7 +17,6 @@ def args(*args, **kwargs):
   def _decorator(func):
     func.__dict__.setdefault('args', []).insert(0, (args, kwargs))
     return func
-
   return _decorator
 
 class ColumnHeader(object):
@@ -83,7 +85,7 @@ class QueryResult(object):
     self._debug=debug
     self._data = [list(r) for r in cursor.fetchall()]
     self.duration = duration
-    cursor.close()
+    # cursor.close()
     self._headers = self._get_headers()
     self._summary = {}
 
@@ -140,7 +142,7 @@ class QueryResult(object):
     try:
       self.cursor.execute(self.sql)
     except Exception as e:
-      self.cur.close()
+      self.cursor.close()
       print str(e)
       raise e
 
@@ -152,7 +154,9 @@ class QueryResult(object):
     else:
       if coldef[2] <= 10:
         collength = coldef[2]
-      elif coldef[2] > 10  and coldef[2] <= 32 :
+      elif coldef[2] > 10  and coldef[2] <= 20 :
+        collength = coldef[2] - 2
+      elif coldef[2] > 20  and coldef[2] <= 32 :
         collength = coldef[2] - 5
       elif coldef[2] > 32  and coldef[2] < 64:
         collength = 30
@@ -178,7 +182,7 @@ class QueryResult(object):
           print ('Display Size: \033[1;31;40m%5s\033[0m' % str(col[2])),
           print ('Internal Size: \033[1;31;40m%5s\033[0m' % str(col[3])),
           print ('Precision : \033[1;31;40m%5s\033[0m' % str(col[4])),
-          print ('Scale : \033[1;31;40m%2s\033[0m' % str(col[5])),
+          print ('Scale : \033[1;31;40m%4s\033[0m' % str(col[5])),
           print ('Nullable : \033[1;31;40m%2s\033[0m' % str(col[6])),
           print ('Print Display : \033[1;31;40m%5s\033[0m' % str(self.getcolformatstr(col)))
         print ('-' * 128 + "\n")
@@ -208,27 +212,23 @@ class OraStats(object):
   def version(self):
 
     """Print Oracle version (Banner)"""
-    sql = "select banner from v$version where rownum=1"
+    sql = """select banner from v$version where rownum=1"""
     self.cur.execute(sql)
     res = self.cur.fetchall()
     print "数据库版本信息如下"
-    Res=QueryResult(sql, self.cur)
-    Res.show_rows()
+    return QueryResult(sql, self.cur)
 
   def checkdb(self):
     """Check Database Connect"""
-    sql = "select 'ConnectOK' from dual"
-    self.cur.execute(sql)
-    res = self.cur.fetchall()
-    for row in res:
-      if row[0] == "ConnectOK":
-        print "数据库连接正常"
-      else:
-        print "数据库连接异常"
+    sql = '''select 'ConnectOK' as "DB_STATUS" from dual'''
+    return QueryResult(sql, self.cur)
 
-  def tbs(self):
+  @args('--tbsname', dest='tbsname', metavar='<Tablespace Name>',         help="Database Tablespace Name ", required=False)
+  @args('--tbswar',  dest='tbswar',  metavar='<Tablespace User Pct>',     help="Tablespace Waring Pct "   , required=False)
+  def tbs(self,tbsname=None,tbswar=0,tbstype=None):
     """Print Database tablespace usage"""
-    sql = '''SELECT
+    sql = """
+    SELECT * from (SELECT
                 D.STATUS                                                      STATUS
               , D.TABLESPACE_NAME                                             NAME
               , D.CONTENTS                                                    TYPE
@@ -288,14 +288,17 @@ class OraStats(object):
               AND D.TABLESPACE_NAME = T.TABLESPACE_NAME(+)
               AND D.EXTENT_MANAGEMENT LIKE 'LOCAL'
               AND D.CONTENTS LIKE 'TEMPORARY'
-            ORDER BY PCT_USED'''
-
-    Res=QueryResult(sql, self.cur)
-    Res.show_rows()
+            ORDER BY PCT_USED
+            ) where PCT_USED > """ + str(tbswar)
+    if tbsname != None:
+      sql += " and NAME = upper('"+tbsname+"')"
+    if tbstype != None:
+      sql += " and TYPE = upper('"+tbstype+"')"
+    return QueryResult(sql, self.cur)
 
   def dbf(self):
     """Print Database Datafile usage"""
-    sql = '''SELECT /*+ ordered */
+    sql = """SELECT /*+ ordered */
             d.tablespace_name                     tablespace
           , d.file_name                           filename
           , round(d.bytes/1024/1024)              filesize
@@ -328,35 +331,35 @@ class OraStats(object):
         ORDER BY
             1
           , 2
-        '''
-    Res=QueryResult(sql, self.cur)
-    Res.show_rows()
+        """
+    return QueryResult(sql, self.cur)
 
   def asm(self):
     """Print Database ASM Diskgroup usage"""
-    sql = '''SELECT
+    sql = """SELECT
             name                                     group_name
           , sector_size                              sector_size
           , block_size                               block_size
-          , allocation_unit_size                     allocation_unit_size
+          , allocation_unit_size                     au_size
           , state                                    state
           , type                                     type
           , total_mb                                 total_mb
+          , free_mb                                  free_mb
           , (total_mb - free_mb)                     used_mb
           , ROUND((1- (free_mb / total_mb))*100, 2)  pct_used
         FROM
             v$asm_diskgroup
+            -- asm
         WHERE
             total_mb != 0
         ORDER BY
             name
-        '''
-    Res = QueryResult(sql, self.cur)
-    Res.show_rows()
+        """
+    return QueryResult(sql, self.cur)
 
   def userlock(self):
     """Print Database User Lock Information """
-    sql = '''SELECT
+    sql = """SELECT
              username,
              account_status
         FROM dba_users
@@ -366,99 +369,95 @@ class OraStats(object):
             'SYSTEM','TSMSYS', 'DIP', 'SYSMAN','ANONYMOUS', 'MONI', 'BACKUP', 'ORASYSSI','ORDDATA','SI_INFORMTN_SCHEMA','ORDPLUGINS','XS$NULL',
             'TIVOLI','EXFSYS','APPQOSSYS', 'CTXSYS','MDSYS','ORDSYS','APEX_030200','OWBSYS','SQLTXADMIN','SPA','SPATIAL_CSW_ADMIN_USR',
             'OWBSYS_AUDIT','APEX_PUBLIC_USER','MDDATA', 'FLOWS_FILES','SPATIAL_WFS_ADMIN_USR')
-        '''
-    Res=QueryResult(sql, self.cur)
-    Res.show_rows()
+        """
+    return QueryResult(sql, self.cur)
 
   def lock(self):
 
     """Print Database Lock"""
-    sql = """
-          Select 'node ' || a_s.INST_ID || ' session ' || a_s.sid || ',' || a_s.SERIAL# ||
-           ' blocking node ' || b_s.INST_ID || ' session ' || b_s.SID || ',' ||
-           b_s.SERIAL# blockinfo
-           -- , a_s.INST_ID
-           -- , a_s.SID
-           -- , a_S.SERIAL#
-           , a_s.SCHEMANAME
-           -- , a_s.MODULE
-           , a_s.STATUS
-           -- , tmp.SECONDS_IN_WAIT||'s' SECONDS_IN_WAIT
-           -- ,'block_info'
-           -- , b_s.INST_ID blocked_inst_id
-           -- , b_s.SID blocked_sid
-           , b_s.SCHEMANAME blocked_SCHEMANAME
-           -- , b_s.EVENT blocked_event
-           -- , b_s.MODULE blocked_module
-           -- , b_s.STATUS blocked_status
-           -- , b_s.SQL_ID blocked_sql_id
-           -- , vsql.SQL_TEXT
-           , obj.owner blocked_owner
-           , obj.object_name blocked_object_name
-           -- , obj.OBJECT_TYPE blocked_OBJECT_TYPE
-           , case
-              when b_s.ROW_WAIT_OBJ# <> -1 then
-               dbms_rowid.rowid_create(1,
-                                       obj.DATA_OBJECT_ID,
-                                       b_s.ROW_WAIT_FILE#,
-                                       b_s.ROW_WAIT_BLOCK#,
-                                       b_s.ROW_WAIT_ROW#)
-              else
+
+    sql = """ SELECT 'NODE ' || A_S.INST_ID || ' SESSION ' || A_S.SID || ',' || A_S.SERIAL# ||
+           ' BLOCKING NODE ' || B_S.INST_ID || ' SESSION ' || B_S.SID || ',' ||
+           B_S.SERIAL# BLOCKINFO
+           -- , A_S.INST_ID
+           -- , A_S.SID
+           -- , A_S.SERIAL#
+           , A_S.SCHEMANAME
+           -- , A_S.MODULE
+           , A_S.STATUS
+           -- , TMP.SECONDS_IN_WAIT||'S' SECONDS_IN_WAIT
+           -- ,'BLOCK_INFO'
+           -- , B_S.INST_ID BLOCKED_INST_ID
+           -- , B_S.SID BLOCKED_SID
+           , B_S.SCHEMANAME BLOCKED_SCHEMANAME
+           -- , B_S.EVENT BLOCKED_EVENT
+           -- , B_S.MODULE BLOCKED_MODULE
+           -- , B_S.STATUS BLOCKED_STATUS
+           -- , B_S.SQL_ID BLOCKED_SQL_ID
+           -- , VSQL.SQL_TEXT
+           , OBJ.OWNER BLOCKED_OWNER
+           , OBJ.OBJECT_NAME BLOCKED_OBJECT_NAME
+           -- , OBJ.OBJECT_TYPE BLOCKED_OBJECT_TYPE
+           , CASE
+              WHEN B_S.ROW_WAIT_OBJ# <> -1 THEN
+               DBMS_ROWID.ROWID_CREATE(1,
+                                       OBJ.DATA_OBJECT_ID,
+                                       B_S.ROW_WAIT_FILE#,
+                                       B_S.ROW_WAIT_BLOCK#,
+                                       B_S.ROW_WAIT_ROW#)
+              ELSE
                '-1'
-             end blocked_rowid --被阻塞数据的rowid
-           -- ,decode(obj.object_type,
+             END BLOCKED_ROWID --被阻塞数据的ROWID
+           -- ,DECODE(OBJ.OBJECT_TYPE,
            --        'TABLE',
-           --        'select * from ' || obj.owner || '.' || obj.object_name ||
-           --        ' where rowid=''' ||
-           --        dbms_rowid.rowid_create(1,
-           --                                obj.DATA_OBJECT_ID,
-           --                                b_s.ROW_WAIT_FILE#,
-           --                                b_s.ROW_WAIT_BLOCK#,
-           --                                b_s.ROW_WAIT_ROW#) || '''',
-           --        NULL) blocked_data_querysql
-      from gv$session a_s,
-           gv$session b_s,
-           dba_objects obj,
-           v$sql vsql,
-           (select sb.sid as tmpsid,
-                   sb.serial# as tmpserial# ,
-                   sb.username,
-                   'blocked',
-                   sw.sid,
-                   sw.serial#,
-                   sw.username,
-                   swt.SECONDS_IN_WAIT
-              from v$lock         lb,
-                   v$lock         lw,
-                   v$session      sb,
-                   v$session      sw,
-                   v$sql          qb,
-                   v$sql          qw,
-                   v$session_wait swt
-             where lb.sid = sb.sid
-               and lw.sid = sw.sid
-               and lb.sid = swt.sid
-               and sb.prev_sql_addr = qb.address
-               and sw.sql_address = qw.address
-               and lb.id1 = lw.id1
-               and sb.lockwait is null
-               and sw.lockwait is not null
-               and lb.block = 1) tmp
-     where b_s.BLOCKING_INSTANCE is not null
-       and b_s.BLOCKING_SESSION is not null
-       and a_s.INST_ID = b_s.BLOCKING_INSTANCE
-       and a_s.SID = b_s.BLOCKING_SESSION
-       and b_s.ROW_WAIT_OBJ# = obj.object_id(+)
-       and vsql.SQL_ID = b_s.SQL_ID
-       and tmp.tmpsid = a_s.SID
-       and tmp.tmpserial# = a_S.SERIAL#
-     order by a_s.inst_id, a_s.sid
+           --        'SELECT * FROM ' || OBJ.OWNER || '.' || OBJ.OBJECT_NAME ||
+           --        ' WHERE ROWID=''' ||
+           --        DBMS_ROWID.ROWID_CREATE(1,
+           --                                OBJ.DATA_OBJECT_ID,
+           --                                B_S.ROW_WAIT_FILE#,
+           --                                B_S.ROW_WAIT_BLOCK#,
+           --                                B_S.ROW_WAIT_ROW#) || '''',
+           --        NULL) BLOCKED_DATA_QUERYSQL
+      FROM GV$SESSION A_S,
+           GV$SESSION B_S,
+           DBA_OBJECTS OBJ,
+           V$SQL VSQL,
+           (SELECT SB.SID AS TMPSID,
+                   SB.SERIAL# AS TMPSERIAL# ,
+                   SB.USERNAME,
+                   'BLOCKED',
+                   SW.SID,
+                   SW.SERIAL#,
+                   SW.USERNAME,
+                   SWT.SECONDS_IN_WAIT
+              FROM V$LOCK         LB,
+                   V$LOCK         LW,
+                   V$SESSION      SB,
+                   V$SESSION      SW,
+                   V$SQL          QB,
+                   V$SQL          QW,
+                   V$SESSION_WAIT SWT
+             WHERE LB.SID = SB.SID
+               AND LW.SID = SW.SID
+               AND LB.SID = SWT.SID
+               AND SB.PREV_SQL_ADDR = QB.ADDRESS
+               AND SW.SQL_ADDRESS = QW.ADDRESS
+               AND LB.ID1 = LW.ID1
+               AND SB.LOCKWAIT IS NULL
+               AND SW.LOCKWAIT IS NOT NULL
+               AND LB.BLOCK = 1) TMP
+     WHERE B_S.BLOCKING_INSTANCE IS NOT NULL
+       AND B_S.BLOCKING_SESSION IS NOT NULL
+       AND A_S.INST_ID = B_S.BLOCKING_INSTANCE
+       AND A_S.SID = B_S.BLOCKING_SESSION
+       AND B_S.ROW_WAIT_OBJ# = OBJ.OBJECT_ID(+)
+       AND VSQL.SQL_ID = B_S.SQL_ID
+       AND TMP.TMPSID = A_S.SID
+       AND TMP.TMPSERIAL# = A_S.SERIAL#
+     ORDER BY A_S.INST_ID, A_S.SID
     """
-    self.cur.execute(sql)
-    res = self.cur.fetchall()
     print "数据库对象锁信息如下"
-    Res=QueryResult(sql,self.cur,self.debug)
-    Res.show_rows()
+    return QueryResult(sql,self.cur,self.debug)
 
 class Main(OraStats):
 
@@ -490,13 +489,23 @@ class Main(OraStats):
 
     subparsers = parser.add_subparsers(dest='stat')
 
-    for (name, method) in self.methods_of():
-      helpdesc = getattr(method, '__doc__', None)
+    for (name, action_fn) in self.methods_of():
+      helpdesc = getattr(action_fn, '__doc__', None)
       p = subparsers.add_parser(name, help=helpdesc)
-      argnames = inspect.getargspec(method).args[1:]
-      for argname in argnames:
-        p.add_argument(argname)
-      p.set_defaults(func=method, argnames=argnames)
+      action_kwargs = []
+      for args, kwargs in getattr(action_fn, 'args', []):
+        kwargs.setdefault('dest', args[0][2:])
+        if kwargs['dest'].startswith('action_kwarg_'):
+            action_kwargs.append(
+                    kwargs['dest'][len('action_kwarg_'):])
+        else:
+            action_kwargs.append(kwargs['dest'])
+            kwargs['dest'] = 'action_kwarg_' + kwargs['dest']
+        p.add_argument(*args, **kwargs)
+      p.set_defaults(action_fn=action_fn)
+      p.set_defaults(action_kwargs=action_kwargs)
+      p.add_argument('action_args', nargs='*',help=argparse.SUPPRESS)
+
 
     parser_a = subparsers.add_parser('add', help='add Database Information',formatter_class=argparse.ArgumentDefaultsHelpFormatter )
     parser_a.add_argument('-ni', '--newip', help="Database Ip Address", required=True)
@@ -516,6 +525,16 @@ class Main(OraStats):
 
     parser_l = subparsers.add_parser('list', help='list Database ', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser_l.add_argument('-n', '--node', default='all', help="Database Ip, all", required=False)
+
+
+    # for automatic add tablespace datafile
+    parser_add = subparsers.add_parser('addfile', help='automatic add tablespace datafile',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser_add.add_argument('-tw', '--tbswar',    default=80,     help="Tablespace Waring Pct "   , required=False)
+    parser_add.add_argument('-dn', '--dbfnum',    default=1,      help="add Datafile number"      , required=False)
+    parser_add.add_argument('-as', '--asmfsize',  default=61440,  help="asm free size(Mb)"        , required=False)
+    parser_add.add_argument('-ds', '--dbfsize',   default=20480,  help="Database Port "           , required=False)
+    parser_add.add_argument('-tn', '--tbsname',   default=None,   help="Database Tablespace Name ", required=False)
+    parser_add.add_argument('-test', '--test',    action="store_true", default=False, help="Database Tablespace Name ", required=False)
 
     self.args = parser.parse_args()
 
@@ -605,6 +624,31 @@ class Main(OraStats):
       rows = [(self.args.username, self.args.passwd,self.args.ipaddress,self.args.port,self.args.database)]
     return rows
 
+  def db_addfile(self):
+    sql = """SELECT COUNT(*) FROM V$asm_diskgroup
+    """
+    UserAsm=QueryResult(sql, self.cur)
+    if UserAsm._data[0][0] == 1:
+      TbsRes = self.tbs(self.args.tbsname,self.args.tbswar,'PERMANENT')
+      for tbsrow in TbsRes._data:
+        AsmRes = self.asm()
+        for asmrow in AsmRes._data:
+          if re.findall('_DATA$',asmrow[0]) and asmrow[7] > int(self.args.asmfsize):
+            sql = "ALTER TABLESPACE " + tbsrow[1] + " ADD DATAFILE "
+            sql += "'+"+asmrow[0]+"' SIZE "+ str(self.args.dbfsize) +'M AUTOEXTEND OFF'
+            try:
+              if self.args.test:
+                print sql
+              else:
+                self.cur.execute(sql)
+                print ('Tablespace : %-20s Add Datafile Successfully !' % tbsrow[1] )
+            except Exception, e:
+              print str(e)
+          else:
+            print "[\033[1;31;40m!!! Asm Diskgroup Is Not Enough Size ["+ self.args.asmfsize+"MB] !!!\033[0m]"
+    else:
+      print "[\033[1;31;40m!!! Database Is Not Use Asm !!!\033[0m]"
+
   def __call__(self):
     try:
       self.oradb = self.db_connect(self.args.username, self.args.passwd, self.args.ipaddress, self.args.port,
@@ -626,12 +670,25 @@ class Main(OraStats):
           print "Database : [\033[1;31;40m" + row[2] + "\033[0m] Port : [\033[1;31;40m" + row[3] + "\033[0m] Service_Name : [\033[1;31;40m" + row[4
             ]+"\033[0m]"+ " Information :"
           if self.db_conn(row):
-            a = self.args
-            callargs = [getattr(a, name) for name in a.argnames]
-            try:
-              self.args.func(*callargs)
-            finally:
-              self.db_close()
+            if self.args.stat == "addfile":
+              self.db_addfile()
+            else:
+              a = self.args
+              fn = a.action_fn
+              fn_args = [arg.decode('utf-8') for arg in a.action_args]
+              fn_kwargs = {}
+              for k in a.action_kwargs:
+                  v = getattr(a, 'action_kwarg_' + k)
+                  if v is None:
+                      continue
+                  if isinstance(v, six.string_types):
+                      v = v.decode('utf-8')
+                  fn_kwargs[k] = v
+              try:
+                Res = fn(*fn_args, **fn_kwargs)
+                Res.show_rows()
+              finally:
+                self.db_close()
     except Exception, err:
       print str(err)
 
