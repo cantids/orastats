@@ -459,6 +459,29 @@ class OraStats(object):
     print "数据库对象锁信息如下"
     return QueryResult(sql,self.cur,self.debug)
 
+  def log(self):
+     """Print Database Log InfoMaion"""
+     sql = """
+           SELECT
+        l.thread#,
+        l.group#,
+        l.sequence#,
+        l.bytes/1024/1024 bytes,
+        l.ARCHIVED,
+        l.STATUS,
+        l.FIRST_TIME,
+        l.NEXT_TIME,
+        lf.member logfile_member
+      from
+        v$log l,
+        v$logfile lf
+      where
+        l.group# = lf.group#
+      order by
+        l.thread#,l.group#
+     """
+     return QueryResult(sql, self.cur)
+
 class Main(OraStats):
 
   def methods_of(obj):
