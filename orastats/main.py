@@ -2,10 +2,13 @@
 # coding: utf-8
 import argparse
 import cx_Oracle
+import sqlite3
 import inspect
 import json
 import six
 import re
+import configparser
+import os
 
 from time import time
 
@@ -334,9 +337,10 @@ class OraStats(object):
         """
     return QueryResult(sql, self.cur)
 
-  def asm(self):
+  @args('--asmwar',  dest='asmwar',  metavar='<AsmDiskgroup User Pct>',     help="AsmDiskgroup Waring Pct "   , required=False)
+  def asm(self,asmwar=0):
     """Print Database ASM Diskgroup usage"""
-    sql = """SELECT
+    sql = """ SELECT * FROM ( SELECT
             name                                     group_name
           , sector_size                              sector_size
           , block_size                               block_size
@@ -354,7 +358,8 @@ class OraStats(object):
             total_mb != 0
         ORDER BY
             name
-        """
+            ) where pct_used > """ + str(asmwar)
+
     return QueryResult(sql, self.cur)
 
   def userlock(self):
@@ -370,6 +375,16 @@ class OraStats(object):
             'TIVOLI','EXFSYS','APPQOSSYS', 'CTXSYS','MDSYS','ORDSYS','APEX_030200','OWBSYS','SQLTXADMIN','SPA','SPATIAL_CSW_ADMIN_USR',
             'OWBSYS_AUDIT','APEX_PUBLIC_USER','MDDATA', 'FLOWS_FILES','SPATIAL_WFS_ADMIN_USR')
         """
+    return QueryResult(sql, self.cur)
+
+  @args('--pname', dest='pname', metavar='<Parameter Name>',help="Database Parameter Name ", required=True)
+  def pm(self,pname=None):
+    """Print Database Parameter """
+    sql = """
+    SELECT  name,VALUE  from v$parameter
+    """
+    if pname != None:
+      sql += " where upper(NAME) like upper('%"+pname+"%')"
     return QueryResult(sql, self.cur)
 
   def lock(self):
@@ -482,6 +497,58 @@ class OraStats(object):
      """
      return QueryResult(sql, self.cur)
 
+  def dgstatus(self):
+    """Print DataGuard Status"""
+    sql = """
+    SELECT PROCESS, STATUS, THREAD#, SEQUENCE#, BLOCK#, BLOCKS FROM V$MANAGED_STANDBY
+    """
+    return QueryResult(sql, self.cur)
+
+  def dbrole(self):
+    """Print DataGuard Role"""
+    sql = """
+    select name,database_role,db_unique_name,open_mode,protection_mode,protection_level,switchover_status,supplemental_log_data_pk,supplemental_log_data_ui from v$database
+    """
+    return QueryResult(sql, self.cur)
+
+  def pmdefault(self):
+    """Print DataGuard Role"""
+    sql = """
+    select name,VALUE from v$parameter where ISDEFAULT='FALSE'
+    """
+    return QueryResult(sql, self.cur)
+
+  def alterseq(self):
+    """Print DataGuard Role"""
+    sql = """
+    declare
+      v_sql varchar2(200);
+      v_result Varchar2(50);
+    begin
+       for rec in (select SEQUENCE_OWNER,SEQUENCE_NAME,MIN_VALUE,MAX_VALUE,INCREMENT_BY,LAST_NUMBER
+        from dba_sequences where SEQUENCE_OWNER not IN
+      ('DBSNMP','DMSYS','ORACLE_OCM', 'OLAPSYS', 'WMSYS', 'XDB', 'SCOTT', 'OUTLN',
+       'PERFSTAT', 'MGMT_VIEW', 'SYS', 'SYSTEM','TSMSYS', 'DIP', 'SYSMAN','ANONYMOUS',
+      'MONI', 'BACKUP', 'ORASYSSI','ORDDATA','SI_INFORMTN_SCHEMA','ORDPLUGINS','XS$NULL',
+      'TIVOLI','EXFSYS','APPQOSSYS','CTXSYS','MDSYS','ORDSYS','APEX_030200','OWBSYS','SQLTXADMIN',
+      'SPA','SPATIAL_CSW_ADMIN_USR','OWBSYS_AUDIT','APEX_PUBLIC_USER','MDDATA','FLOWS_FILES','SPATIAL_WFS_ADMIN_USR')
+      and SEQUENCE_OWNER='TRAVEL')
+      loop
+          v_sql:='alter SEQUENCE ' || rec.SEQUENCE_OWNER || '.' || rec.SEQUENCE_NAME || ' Increment By 200000  MAXVALUE 99999999999999999999999999 ';
+          -- dbms_output.put_line(v_sql);
+          execute immediate v_sql;
+          v_sql:='select ' || rec.SEQUENCE_OWNER || '.' || rec.SEQUENCE_NAME || '.nextval from dual '  ;
+          -- dbms_output.put_line(v_sql);
+          execute immediate v_sql into v_result;
+          -- dbms_output.put_line(v_result);
+          v_sql:='alter SEQUENCE ' || rec.SEQUENCE_OWNER || '.' || rec.SEQUENCE_NAME || ' Increment By '||rec.INCREMENT_BY;
+          -- dbms_output.put_line(v_sql);
+          execute immediate v_sql;
+       end loop;
+    end;
+    """
+    return QueryResult(sql, self.cur)
+
 class Main(OraStats):
 
   def methods_of(obj):
@@ -499,17 +566,19 @@ class Main(OraStats):
   def __init__(self):
 
     parser = argparse.ArgumentParser('orastats', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-U', '--username', default='zabbix', help="Database Username with sys views grant",
-              required=False)
-    parser.add_argument('-P', '--passwd', default='zabbix', help="Database Username Password", required=False)
-    parser.add_argument('-i', '--ipaddress', default='192.168.56.65', help="Database Ip Address", required=False)
-    parser.add_argument('-p', '--port', default='1521', help="Database Port ", required=False)
-    parser.add_argument('-d', '--database', default='orcl', help="Database Service Name", required=False)
+    parser.add_argument('-g', '--group', default='all', help="Check Database Group, all", required=False)
     parser.add_argument('-n', '--node', default='all', help="Check Database Ip, all", required=False)
+    parser.add_argument('-t', '--type',default='sqlnite', help="Database Type sqlnite,oracle,mysql", required=False)
     parser.add_argument('-v', '--version', action='version', version=' %(prog)s '+ __version__ + ' by ' + __author__)
     parser.add_argument("-D", "--debug", action="store_true", dest="debug", default=False,
               help="Debug mode ,print more info")
-
+    # parser.add_argument('-i', '--ipaddress', default='192.168.56.65', help="Database Ip Address", required=False)
+    # parser.add_argument('-p', '--port', default='1521', help="Database Port ", required=False)
+    # parser.add_argument('-s', '--servicename',default='all', help="Database Service Name", required=False)
+    # parser.add_argument('-d', '--database', default='orcl', help="Database Service Name", required=False)
+    # parser.add_argument('-U', '--username', default='zabbix', help="Database Username with sys views grant",
+    #           required=False)
+    # parser.add_argument('-P', '--passwd', default='zabbix', help="Database Username Password", required=False)
     subparsers = parser.add_subparsers(dest='stat')
 
     for (name, action_fn) in self.methods_of():
@@ -531,24 +600,29 @@ class Main(OraStats):
 
 
     parser_a = subparsers.add_parser('add', help='add Database Information',formatter_class=argparse.ArgumentDefaultsHelpFormatter )
+    parser_a.add_argument('-ng', '--newgroup', help="Database Group Name", required=True)
     parser_a.add_argument('-ni', '--newip', help="Database Ip Address", required=True)
-    parser_a.add_argument('-nu', '--newusername', help="Database Username with sys views grant", required=False)
-    parser_a.add_argument('-nP', '--newpasswd', help="Database Username Password", required=False)
     parser_a.add_argument('-np', '--newport', help="Database Port ", required=True)
     parser_a.add_argument('-ns', '--newservicename', help="Database Service Name", required=True)
+    parser_a.add_argument('-nu', '--newusername', help="Database Username with sys views grant", required=True)
+    parser_a.add_argument('-nP', '--newpasswd', help="Database Username Password", required=True)
 
     parser_d = subparsers.add_parser('del', help='del database Information',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser_d.add_argument('-ng', '--newgroup', help="Database Group Name", required=True)
     parser_d.add_argument('-ni', '--newip', help="Database Ip Address", required=True)
-    parser_d.add_argument('-nu', '--newusername', default='', help="Database Username with sys views grant", required=False)
-    parser_d.add_argument('-nP', '--newpasswd', default='', help="Database Username Password", required=False)
     parser_d.add_argument('-np', '--newport', help="Database Port ", required=True)
     parser_d.add_argument('-ns', '--newservicename', help="Database Service Name", required=True)
+    parser_d.add_argument('-nu', '--newusername', default='', help="Database Username with sys views grant", required=False)
+    parser_d.add_argument('-nP', '--newpasswd', default='', help="Database Username Password", required=False)
+
 
     parser_i = subparsers.add_parser('init', help='init Database and create table ora_db_info', )
+    parser_i.add_argument('-t', '--type',default='sqlnite', help="Database Type sqlnite,oracle,mysql", required=False)
 
     parser_l = subparsers.add_parser('list', help='list Database ', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser_l.add_argument('-g', '--group',default='all', help="Database Group Name", required=False)
     parser_l.add_argument('-n', '--node', default='all', help="Database Ip, all", required=False)
-
+    parser_l.add_argument('-s', '--servicename',default='all', help="Database Service Name", required=False)
 
     # for automatic add tablespace datafile
     parser_add = subparsers.add_parser('addfile', help='automatic add tablespace datafile',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -591,7 +665,8 @@ class Main(OraStats):
       dbuserpasswd = 'NULL'
     else:
       dbuserpasswd = "'" + self.args.newpasswd + "'"
-    sql = "INSERT INTO ORA_DB_INFO(DB_IPADDR,DB_PORT,DB_SERVICENAME,DB_USER,DB_PASS) VALUES ('"
+    sql = "INSERT INTO ORA_DB_INFO(DB_GROUP,DB_IPADDR,DB_PORT,DB_SERVICENAME,DB_USER,DB_PASS) VALUES ('"
+    sql += self.args.newgroup + "','"
     sql += self.args.newip + "','"
     sql += self.args.newport + "','"
     sql += self.args.newservicename + "',"
@@ -606,7 +681,7 @@ class Main(OraStats):
       print "add database Successfully"
 
   def db_del(self):
-    sql = "delete from ora_db_info where db_ipaddr = '" + self.args.newip + "' and db_port = '" + self.args.newport + "' and db_servicename='" + self.args.newservicename + "'"
+    sql = "delete from ora_db_info where DB_GROUP = '" + self.args.newgroup + "' and db_ipaddr = '" + self.args.newip + "' and db_port = '" + self.args.newport + "' and db_servicename='" + self.args.newservicename + "'"
     try:
       self.oracur.execute(sql)
     finally:
@@ -618,12 +693,13 @@ class Main(OraStats):
     sql = '''
           CREATE TABLE "ORA_DB_INFO"
           (
+            "DB_GROUP"           VARCHAR2(40),
             "DB_ID"              NUMBER,
-            "DB_IPADDR"          VARCHAR2(20 BYTE),
-            "DB_PORT"            VARCHAR2(6 BYTE),
-            "DB_SERVICENAME"     VARCHAR2(20  BYTE),
-            "DB_USER"            VARCHAR2(30 BYTE),
-            "DB_PASS"            VARCHAR2(30 BYTE),
+            "DB_IPADDR"          VARCHAR2(20),
+            "DB_PORT"            VARCHAR2(6),
+            "DB_SERVICENAME"     VARCHAR2(20 ),
+            "DB_USER"            VARCHAR2(30),
+            "DB_PASS"            VARCHAR2(30),
             "DB_STATUS"          CHAR(1) default 1
           )
           '''
@@ -639,7 +715,13 @@ class Main(OraStats):
       dbip = self.args.node
       if self.args.node == 'all':
         dbip = ''
-      sql = "select nvl(DB_USER,'zabbix') dbusers,nvl(DB_USER,'zabbix') dbuserspasswd,DB_IPADDR,DB_PORT,DB_SERVICENAME from ORA_DB_INFO where DB_STATUS = 1 AND DB_IPADDR like '%" + dbip + "%'"
+      sql = "select DB_USER dbusers,DB_PASS dbuserspasswd,DB_IPADDR,DB_PORT,DB_SERVICENAME,DB_GROUP from ORA_DB_INFO "
+      sql +="where DB_STATUS = 1 AND DB_IPADDR like '%" + dbip + "%'"
+      if self.args.group != 'all':
+        sql +="AND DB_GROUP = '" + self.args.group + "'"
+      if self.args.servicename != 'all':
+        sql +="AND DB_SERVICENAME = '" + self.args.servicename + "'"
+      sql +="order by DB_IPADDR"
       self.oracur.execute(sql)
       rows = self.oracur.fetchall()
       self.oradb.close()
@@ -647,36 +729,47 @@ class Main(OraStats):
       rows = [(self.args.username, self.args.passwd,self.args.ipaddress,self.args.port,self.args.database)]
     return rows
 
-  def db_addfile(self):
-    sql = """SELECT COUNT(*) FROM V$asm_diskgroup
-    """
-    UserAsm=QueryResult(sql, self.cur)
-    if UserAsm._data[0][0] == 1:
-      TbsRes = self.tbs(self.args.tbsname,self.args.tbswar,'PERMANENT')
-      for tbsrow in TbsRes._data:
-        AsmRes = self.asm()
-        for asmrow in AsmRes._data:
-          if re.findall('_DATA$',asmrow[0]) and asmrow[7] > int(self.args.asmfsize):
-            sql = "ALTER TABLESPACE " + tbsrow[1] + " ADD DATAFILE "
-            sql += "'+"+asmrow[0]+"' SIZE "+ str(self.args.dbfsize) +'M AUTOEXTEND OFF'
-            try:
-              if self.args.test:
-                print sql
-              else:
-                self.cur.execute(sql)
-                print ('Tablespace : %-20s Add Datafile Successfully !' % tbsrow[1] )
-            except Exception, e:
-              print str(e)
-          else:
-            print "[\033[1;31;40m!!! Asm Diskgroup Is Not Enough Size ["+ self.args.asmfsize+"MB] !!!\033[0m]"
-    else:
-      print "[\033[1;31;40m!!! Database Is Not Use Asm !!!\033[0m]"
+  def db_conninit(self):
+    try:
+      if self.args.type == "sqlnite":
+        self.oradb  = sqlite3.connect("orastats.db")
+        self.oracur = self.oradb.cursor()
+      elif self.args.type == "oracle":
+        self.oradb = self.db_connect(self.args.username, self.args.passwd, self.args.ipaddress, self.args.port,
+                       self.args.database)
+        self.oracur = self.oradb.cursor()
+      else:
+        print "not support database"
+    except Exception as e:
+      raise e
+  # def db_addfile(self):
+  #   sql = """SELECT COUNT(*) FROM V$asm_diskgroup
+  #   """
+  #   UserAsm=QueryResult(sql, self.cur)
+  #   if UserAsm._data[0][0] == 1:
+  #     TbsRes = self.tbs(self.args.tbsname,self.args.tbswar,'PERMANENT')
+  #     for tbsrow in TbsRes._data:
+  #       AsmRes = self.asm()
+  #       for asmrow in AsmRes._data:
+  #         if re.findall('_DATA$',asmrow[0]) and asmrow[7] > int(self.args.asmfsize):
+  #           sql = "ALTER TABLESPACE " + tbsrow[1] + " ADD DATAFILE "
+  #           sql += "'+"+asmrow[0]+"' SIZE "+ str(self.args.dbfsize) +'M AUTOEXTEND OFF'
+  #           try:
+  #             if self.args.test:
+  #               print sql
+  #             else:
+  #               self.cur.execute(sql)
+  #               print ('Tablespace : %-20s Add Datafile Successfully !' % tbsrow[1] )
+  #           except Exception, e:
+  #             print str(e)
+  #         else:
+  #           print "[\033[1;31;40m!!! Asm Diskgroup Is Not Enough Size ["+ self.args.asmfsize+"MB] !!!\033[0m]"
+  #   else:
+  #     print "[\033[1;31;40m!!! Database Is Not Use Asm !!!\033[0m]"
 
   def __call__(self):
     try:
-      self.oradb = self.db_connect(self.args.username, self.args.passwd, self.args.ipaddress, self.args.port,
-                     self.args.database)
-      self.oracur = self.oradb.cursor()
+      self.db_conninit()
       if self.args.debug:
         OraStats.debug = self.args.debug
       if self.args.stat == "add":
@@ -687,31 +780,29 @@ class Main(OraStats):
         self.db_init()
       elif self.args.stat == "list":
         for row in self.db_list():
-          print "Database : [\033[1;31;40m" + row[2] + "\033[0m] Port : [\033[1;31;40m" + row[3] + "\033[0m] Service_Name : [\033[1;31;40m" + row[4]+"\033[0m]"
+          print ('Group : [\033[1;31;40m%-10s\033[0m] Database : [\033[1;31;40m%-15s\033[0m] Port : [\033[1;31;40m%-6s\033[0m] Service_Name : [\033[1;31;40m%-10s\033[0m]' % (row[5],row[2],row[3],row[4]))
       else:
         for row in self.db_list():
-          print "Database : [\033[1;31;40m" + row[2] + "\033[0m] Port : [\033[1;31;40m" + row[3] + "\033[0m] Service_Name : [\033[1;31;40m" + row[4
-            ]+"\033[0m]"+ " Information :"
+          print ('Group : [\033[1;31;40m%-10s\033[0m] Database : [\033[1;31;40m%-15s\033[0m] Port : [\033[1;31;40m%-6s\033[0m] Service_Name : [\033[1;31;40m%-10s\033[0m]' % (row[5],row[2],row[3],row[4]))
           if self.db_conn(row):
-            if self.args.stat == "addfile":
-              self.db_addfile()
-            else:
-              a = self.args
-              fn = a.action_fn
-              fn_args = [arg.decode('utf-8') for arg in a.action_args]
-              fn_kwargs = {}
-              for k in a.action_kwargs:
-                  v = getattr(a, 'action_kwarg_' + k)
-                  if v is None:
-                      continue
-                  if isinstance(v, six.string_types):
-                      v = v.decode('utf-8')
-                  fn_kwargs[k] = v
-              try:
-                Res = fn(*fn_args, **fn_kwargs)
-                Res.show_rows()
-              finally:
-                self.db_close()
+            a = self.args
+            fn = a.action_fn
+            fn_args = [arg.decode('utf-8') for arg in a.action_args]
+            fn_kwargs = {}
+            for k in a.action_kwargs:
+                v = getattr(a, 'action_kwarg_' + k)
+                if v is None:
+                    continue
+                if isinstance(v, six.string_types):
+                    v = v.decode('utf-8')
+                fn_kwargs[k] = v
+            try:
+              Res = fn(*fn_args, **fn_kwargs)
+              Res.show_rows()
+            except Exception, err:
+              print str(err)
+            finally:
+              self.db_close()
     except Exception, err:
       print str(err)
 

@@ -1,10 +1,23 @@
 [TOC]
 
 <a name="安装依赖环境"></a>
-#.安装依赖环境
+# 安装依赖环境
+如果已安装cx_Oracle请忽略
+
+## 验证方式
+```python
+python
+Python 2.7.10 (default, Jul 30 2016, 18:31:42)
+[GCC 4.2.1 Compatible Apple LLVM 8.0.0 (clang-800.0.34)] on darwin
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import cx_Oracle
+>>>
+如果没有报错就是已安装
+```
 
 <a name="安装简版oracle客户端"></a>
-##.安装简版oracle客户端
+## 安装oracle客户端
+可以安装完整版客户端也可以安装简版客户端 
 Oracle Instant Client download Link [oracle](http://www.oracle.com/technetwork/database/features/instant-client/index-097480.html)
 ```shell
 unzip instantclient-basic-linux.x64-11.2.0.4.0.zip
@@ -23,7 +36,8 @@ echo "export LD_LIBRARY_PATH=\$ORACLE_HOME" >> ~/.bash_profile
 echo "export PATH=\$PATH:\$ORACLE_HOME" >> ~/.bash_profile
 ```
 <a name="安装cx_oracle"></a>
-##.安装cx_Oracle
+## 安装cx_Oracle
+安装cx_Oracle的用户必须配置Oracle的环境变量
 ```shell
 gzip -dc cx_Oracle-5.2.tar.gz|tar -xf -
 cd cx_Oracle-5.2/
@@ -34,45 +48,58 @@ rm -rf cx_Oracle*
 
 
 # 初始化数据库
-修改脚本中
+修改脚本中连接数据库的信息,
 ```python
+找到如下信息
 Class Main 里的 __init__
     parser.add_argument('-U', '--username', default='zabbix', help="Database Username with sys views grant",
-              required=False)
+              required=False) 修改default='zabbix'里的zabbix为自己数据库的用户
     parser.add_argument('-P', '--passwd', default='zabbix', help="Database Username Password", required=False)
+                              修改default='zabbix'里的zabbix为自己数据库用户的密码
     parser.add_argument('-i', '--ipaddress', default='192.168.56.65', help="Database Ip Address", required=False)
+                              修改default='192.168.56.65'里的IP修改成相应主机的IP
     parser.add_argument('-p', '--port', default='1521', help="Database Port ", required=False)
+                              修改default='1521'里的1521 相应的监听端口
     parser.add_argument('-d', '--database', default='orcl', help="Database Service Name", required=False)
+                              修改default='orcl'里的orcl 为 自己的服务名
 
 以上几个默认参数值
 
 #初始化数据库
-./orastats.py init
+./orastats.py init 
 
 InIt database Successfully
+
+在上面配置的<IP>下的数据库<Service_Name>里的<username>创建了一个ora_db_info表
 
 ```
 # 添加数据库
 ```python
- ./orastats.py add -h
+./test.py add -h
 usage: orastats add [-h] -ni NEWIP [-nu NEWUSERNAME] [-nP NEWPASSWD] -np
-                    NEWPORT -ns NEWSERVICENAME
+                    NEWPORT -ns NEWSERVICENAME -ng NEWGROUP
 
 optional arguments:
   -h, --help            show this help message and exit
   -ni NEWIP, --newip NEWIP
-                        Database Ip Address
+                        Database Ip Address (default: None)
   -nu NEWUSERNAME, --newusername NEWUSERNAME
-                        Database Username with sys views grant
+                        Database Username with sys views grant (default: None)
   -nP NEWPASSWD, --newpasswd NEWPASSWD
-                        Database Username Password
+                        Database Username Password (default: None)
   -np NEWPORT, --newport NEWPORT
-                        Database Port
+                        Database Port (default: None)
   -ns NEWSERVICENAME, --newservicename NEWSERVICENAME
-                        Database Service Name
-./orastats.py add -ni 192.168.56.65 -np 1521 -ns orcl
+                        Database Service Name (default: None)
+  -ng NEWGROUP, --newgroup NEWGROUP  --此数据库属于那个组
+                        Database Group Name (default: None)
+添加要查询的数据库信息
+  -ng <组名> -ni <ip地址> -np <端口> -ns <服务名> -nu <用户名> -nP <密码>
+
+demo
+./orastats.py add -ng TRAVEL -ni 192.168.56.65 -np 1521 -ns orcl -nu zabbix -nP zabbix
 add database Successfully
-./orastats.py add -ni 192.168.56.65 -np 1521 -ns test1
+./orastats.py add -ng TRAVEL -ni 192.168.56.65 -np 1521 -ns test1 -nu zabbix -nP zabbix
 add database Successfully
 # -nu -nP 可不设置,默认为NULL,如果不输入则判断为zbbix
 ```
@@ -85,14 +112,26 @@ usage: orastats list [-h] [-n NODE]
 optional arguments:
   -h, --help            show this help message and exit
   -n NODE, --node NODE  Database Ip, all (default: all)
-
+  -g GROUP, --group GROUP
+                        Database Group Name (default: all)
+  -s SERVICENAME, --servicename SERVICENAME
+                        Database Service Name (default: all)
+# 查看所有
 ./orastats.py list
-Database : [192.168.56.65] Port : [1521] Service_Name : [orcl]
-Database : [192.168.56.65] Port : [1521] Service_Name : [test1]
-
+Group : [B         ] Database : [1.1.1.1        ] Port : [1521  ] Service_Name : [xxxx      ]
+Group : [B         ] Database : [111.111.111.111] Port : [1521  ] Service_Name : [xxxx      ]
+Group : [ALL       ] Database : [192.168.56.65  ] Port : [1521  ] Service_Name : [orcl      ]
+# 查看某个组
+./orastats.py list -g M
+Group : [M         ] Database : [xxx.xxx.xxx.xxx  ] Port : [1521  ] Service_Name : [xxxx1]
+Group : [M         ] Database : [xxx.xxx.xxx.xxx  ] Port : [1521  ] Service_Name : [xxxx2]
+Group : [M         ] Database : [xxx.xxx.xxx.xxx  ] Port : [1521  ] Service_Name : [xxxx3]
+Group : [M         ] Database : [xxx.xxx.xxx.xxx  ] Port : [1521  ] Service_Name : [xxxx4]
+# 查看某个节点
 ./orastats.py list -n 192.168.56.65
-Database : [192.168.56.65] Port : [1521] Service_Name : [orcl]
-Database : [192.168.56.65] Port : [1521] Service_Name : [test1]
+Group : [ALL       ] Database : [192.168.56.65] Port : [1521] Service_Name : [orcl]
+Group : [ALL       ] Database : [192.168.56.65] Port : [1521] Service_Name : [test1]
+
 ```
 
 # 查看参数
