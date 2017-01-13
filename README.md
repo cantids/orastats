@@ -1,7 +1,54 @@
 [TOC]
 
-<a name="安装依赖环境"></a>
 # 安装依赖环境
+swith user to zabbix or oramon(useradd oramon)
+```shell
+mkdir media
+mkdir python
+```
+依赖环境统一安装在 用户家目录python下
+
+
+## 安装zlib
+```shell
+yum install zlib-devel bzip2-devel openssl-devel ncurses-devel sqlite-devel readline-devel tk-devel
+```
+
+
+
+
+## 安装Python
+```shell
+gzip -dc Python-2.7.10.tgz|tar -xf -
+cd Python-2.7.10
+./configure --prefix=$HOME/python
+make;make install
+cd ..
+rm -rf Python-2*
+```
+
+下载地址https://pypi.python.org/
+
+## 安装setuptools
+```shell
+export PATH=$HOME/bin:$HOME/python/bin:$PATH
+echo "export PATH=\$HOME/bin:\$HOME/python/bin:\$PATH" >> ~/.bash_profile
+tar -zxf setuptools-18.1.tar.gz
+cd setuptools-18.1
+python setup.py install
+cd ..
+rm -rf setuptools-18*
+```
+
+## 安装pip/six/configparser-3.5.0.tar.gz
+```shell
+
+tar -zxf pip-8.1.1.tar.gz
+cd pip-8.1.1
+python setup.py install
+cd ..
+rm -rf pip-8.1*
+```
 如果已安装cx_Oracle请忽略
 
 ## 验证方式

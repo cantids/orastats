@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-from orastats import main
+# coding: utf-8
+from orastats import orastat
 
 if __name__ == '__main__':
-    main.run()
+    orastat.run()
