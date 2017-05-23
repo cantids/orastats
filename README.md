@@ -97,33 +97,18 @@ rm -rf cx_Oracle*
 # 初始化数据库
 修改脚本中连接数据库的信息,
 ```python
-找到如下信息
-Class Main 里的 __init__
-    parser.add_argument('-U', '--username', default='zabbix', help="Database Username with sys views grant",
-              required=False) 修改default='zabbix'里的zabbix为自己数据库的用户
-    parser.add_argument('-P', '--passwd', default='zabbix', help="Database Username Password", required=False)
-                              修改default='zabbix'里的zabbix为自己数据库用户的密码
-    parser.add_argument('-i', '--ipaddress', default='192.168.56.65', help="Database Ip Address", required=False)
-                              修改default='192.168.56.65'里的IP修改成相应主机的IP
-    parser.add_argument('-p', '--port', default='1521', help="Database Port ", required=False)
-                              修改default='1521'里的1521 相应的监听端口
-    parser.add_argument('-d', '--database', default='orcl', help="Database Service Name", required=False)
-                              修改default='orcl'里的orcl 为 自己的服务名
-
-以上几个默认参数值
 
 #初始化数据库
-./orastats.py init 
+./orastat.py init 
 
 InIt database Successfully
 
-在上面配置的<IP>下的数据库<Service_Name>里的<username>创建了一个ora_db_info表
 
 ```
 # 添加数据库
 ```python
-./test.py add -h
-usage: orastats add [-h] -ni NEWIP [-nu NEWUSERNAME] [-nP NEWPASSWD] -np
+./orastat.py add -h
+usage: orastat add [-h] -ni NEWIP [-nu NEWUSERNAME] [-nP NEWPASSWD] -np
                     NEWPORT -ns NEWSERVICENAME -ng NEWGROUP
 
 optional arguments:
@@ -144,17 +129,17 @@ optional arguments:
   -ng <组名> -ni <ip地址> -np <端口> -ns <服务名> -nu <用户名> -nP <密码>
 
 demo
-./orastats.py add -ng TRAVEL -ni 192.168.56.65 -np 1521 -ns orcl -nu zabbix -nP zabbix
+./orastat.py add -ng TRAVEL -ni 192.168.56.65 -np 1521 -ns orcl -nu zabbix -nP zabbix
 add database Successfully
-./orastats.py add -ng TRAVEL -ni 192.168.56.65 -np 1521 -ns test1 -nu zabbix -nP zabbix
+./orastat.py add -ng TRAVEL -ni 192.168.56.65 -np 1521 -ns orastat1 -nu zabbix -nP zabbix
 add database Successfully
 # -nu -nP 可不设置,默认为NULL,如果不输入则判断为zbbix
 ```
 
 # 查看数据库
 ```python
-./orastats.py list -h
-usage: orastats list [-h] [-n NODE]
+./orastat.py list -h
+usage: orastat list [-h] [-n NODE]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -164,18 +149,18 @@ optional arguments:
   -s SERVICENAME, --servicename SERVICENAME
                         Database Service Name (default: all)
 # 查看所有
-./orastats.py list
+./orastat.py list
 Group : [B         ] Database : [1.1.1.1        ] Port : [1521  ] Service_Name : [xxxx      ]
 Group : [B         ] Database : [111.111.111.111] Port : [1521  ] Service_Name : [xxxx      ]
 Group : [ALL       ] Database : [192.168.56.65  ] Port : [1521  ] Service_Name : [orcl      ]
 # 查看某个组
-./orastats.py list -g M
+./orastat.py list -g M
 Group : [M         ] Database : [xxx.xxx.xxx.xxx  ] Port : [1521  ] Service_Name : [xxxx1]
 Group : [M         ] Database : [xxx.xxx.xxx.xxx  ] Port : [1521  ] Service_Name : [xxxx2]
 Group : [M         ] Database : [xxx.xxx.xxx.xxx  ] Port : [1521  ] Service_Name : [xxxx3]
 Group : [M         ] Database : [xxx.xxx.xxx.xxx  ] Port : [1521  ] Service_Name : [xxxx4]
 # 查看某个节点
-./orastats.py list -n 192.168.56.65
+./orastat.py list -n 192.168.56.65
 Group : [ALL       ] Database : [192.168.56.65] Port : [1521] Service_Name : [orcl]
 Group : [ALL       ] Database : [192.168.56.65] Port : [1521] Service_Name : [test1]
 
@@ -183,7 +168,7 @@ Group : [ALL       ] Database : [192.168.56.65] Port : [1521] Service_Name : [te
 
 # 查看参数
 ```python
-usage: orastats [-h] [-U USERNAME] [-P PASSWD] [-i IPADDRESS] [-p PORT]
+usage: orastat [-h] [-U USERNAME] [-P PASSWD] [-i IPADDRESS] [-p PORT]
                 [-d DATABASE] [-n NODE] [-v] [-D]
                 {checkdb,tbs,list,init,dbf,add,version,del,userlock,asm} ...
 
@@ -218,7 +203,7 @@ optional arguments:
 
 
 
-./orastats.py version
+./orastat.py version
 Database : [192.168.56.65] Port : [1521] Service_Name : [orcl] Information :
 数据库版本信息如下
 BANNER
@@ -236,7 +221,7 @@ Oracle Database 11g Enterprise Edition Release 11.2.0.3.0 - 64bit Production
 # 增加查询函数
 
 ```python
-找到 class OraStats(object)
+找到 class orastat(object)
 
 增加一个类似如下的,(注意缩进)
   def lock(self):
@@ -330,8 +315,8 @@ Oracle Database 11g Enterprise Edition Release 11.2.0.3.0 - 64bit Production
     Res.show_rows()
 
 
-./orastats.py -h
-usage: orastats [-h] [-U USERNAME] [-P PASSWD] [-i IPADDRESS] [-p PORT]
+./orastat.py -h
+usage: orastat [-h] [-U USERNAME] [-P PASSWD] [-i IPADDRESS] [-p PORT]
                 [-d DATABASE] [-n NODE] [-v] [-D]
                 {checkdb,lock,tbs,list,init,dbf,add,version,del,userlock,asm}
                 ...
@@ -350,7 +335,7 @@ positional arguments:
     init                init Database and create table ora_db_info
     list                list Database
 
-./orastats.py lock
+./orastat.py lock
 Database : [192.168.56.65] Port : [1521] Service_Name : [orcl] Information :
 数据库对象锁信息如下
 BLOCKINFO                                                    SCHEMANAME                STATUS   BLOCKED_SCHEMANAME        BLOCKED_OWNER             BLOCKED_OBJECT_NAME            BLOCKED_ROWID
