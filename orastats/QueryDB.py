@@ -357,3 +357,4 @@ class OraStats(object):
     # print self.db_ip
     sql = """select sysdate , sum(bytes)/1024/1024 SEG_SIZE_MB from dba_segments"""
     return QueryResult(sql, self.cur)
+

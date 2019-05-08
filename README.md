@@ -21,7 +21,7 @@ yum install zlib-devel bzip2-devel openssl-devel ncurses-devel sqlite-devel read
 ```shell
 gzip -dc Python-2.7.10.tgz|tar -xf -
 cd Python-2.7.10
-./configure --prefix=$HOME/python
+./configure --prefix=$HOME/python --with-zlib=$HOME/python
 make;make install
 cd ..
 rm -rf Python-2*
